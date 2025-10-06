@@ -1,92 +1,272 @@
-{% load static %}
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Social Media Tracker</title>
-
-  <!-- Tailwind CSS & Chart.js -->
+  <meta charset="utf-8">
+  <title>Smart Time Track</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-  <!-- Optional local stylesheet -->
-  <link rel="stylesheet" href="{% static 'tracker/css/style.css' %}">
-
   <style>
-    body { background: #065f46; }
-    .card { background: white; border-radius: 1rem; box-shadow: 0 8px 20px rgba(0,0,0,.1); padding: 1.2rem; }
+    :root{
+      --green-bg:#065f46; --green-accent:#10b981;
+      --blue:#2563eb; --gold:#caa32a; --gold-hi:#ffe28a; --gold-dark:#a88418; --ink:#111827;
+    }
+    body{ background:var(--green-bg); }
+    .card{ background:white; border-radius:1rem; box-shadow:0 10px 25px rgba(0,0,0,.10); padding:1.25rem; }
+    .pill{ border-radius:.8rem; padding:.35rem .7rem; }
+    .tab-btn{ padding:.5rem .9rem; border-radius:.7rem; }
+    .tab-active{ background:#000; color:#fff; }
+    .kpi-gold{ background:linear-gradient(135deg, var(--gold) 0%, var(--gold-hi) 50%, var(--gold-dark) 100%); color:var(--ink); }
+    .chip{ border-radius:.75rem; padding:.2rem .55rem; background:#eef2ff; color:#1e293b; }
   </style>
 </head>
 <body class="text-white">
   <div class="max-w-6xl mx-auto p-6 space-y-6">
     <header class="flex items-center justify-between">
-      <h1 class="text-2xl font-extrabold">📊 Social Media Tracker</h1>
-      <div class="bg-black/40 px-3 py-1 rounded-lg text-sm">Timezone: Local</div>
+      <h1 class="text-2xl font-extrabold">Smart Time Track</h1>
+      <div class="pill bg-black/50">Timezone: {{ timezone }}</div>
     </header>
 
-    <!-- KPIs -->
-    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="card"><div class="text-slate-600">Facebook (s)</div><div id="kpi_fb" class="text-3xl font-semibold text-black">0</div></div>
-      <div class="card"><div class="text-slate-600">Instagram (s)</div><div id="kpi_ig" class="text-3xl font-semibold text-black">0</div></div>
-      <div class="card"><div class="text-slate-600">X (s)</div><div id="kpi_x" class="text-3xl font-semibold text-black">0</div></div>
-      <div class="card"><div class="text-slate-600">TikTok (s)</div><div id="kpi_tt" class="text-3xl font-semibold text-black">0</div></div>
+    <nav class="flex gap-2">
+      <button class="tab-btn tab-active" data-tab="tracker" style="background:var(--blue);color:#fff">Tracker</button>
+      <button class="tab-btn" data-tab="gpa" style="background:#000;color:#fff">GPA Calculator</button>
+      <button class="tab-btn" data-tab="analysis" style="background:var(--gold);color:#111">Time vs GPA</button>
+    </nav>
+
+    <!-- TRACKER -->
+    <section id="tab-tracker" class="space-y-4">
+      <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="card"><div class="text-slate-600">Facebook (s)</div><div id="kpi_fb" class="text-3xl font-semibold text-black">0</div></div>
+        <div class="card"><div class="text-slate-600">Instagram (s)</div><div id="kpi_ig" class="text-3xl font-semibold text-black">0</div></div>
+        <div class="card"><div class="text-slate-600">X (s)</div><div id="kpi_x" class="text-3xl font-semibold text-black">0</div></div>
+        <div class="card"><div class="text-slate-600">TikTok (s)</div><div id="kpi_tt" class="text-3xl font-semibold text-black">0</div></div>
+      </section>
+
+      <!-- Avg hours/day donuts -->
+      <section class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold" style="color:var(--blue)">Average Hours per Day (Donuts)</h2>
+          <div class="text-slate-600 text-sm">Target: <span id="targetLabel">4.0</span> h/day</div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div class="flex flex-col items-center"><canvas id="d_fb" width="180" height="180"></canvas><div class="mt-2 text-black">Facebook</div></div>
+          <div class="flex flex-col items-center"><canvas id="d_ig" width="180" height="180"></canvas><div class="mt-2 text-black">Instagram</div></div>
+          <div class="flex flex-col items-center"><canvas id="d_x"  width="180" height="180"></canvas><div class="mt-2 text-black">X</div></div>
+          <div class="flex flex-col items-center"><canvas id="d_tt" width="180" height="180"></canvas><div class="mt-2 text-black">TikTok</div></div>
+        </div>
+      </section>
+
+      <!-- TOTAL donut (sum seconds per platform) -->
+      <section class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold" style="color:var(--blue)">Total Time (All‑Time) — Donut</h2>
+          <div class="text-slate-600 text-sm">Units: sum per platform (seconds)</div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="flex flex-col items-center">
+            <canvas id="donutTotal" width="260" height="260"></canvas>
+            <div class="mt-2 text-black">Sum across entire database</div>
+          </div>
+          <div class="text-black">
+            <div class="font-semibold mb-2" style="color:var(--gold)">Details</div>
+            <div id="totalBreakdown" class="space-y-1 text-sm"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold" style="color:var(--blue)">Last 7 Days</h2>
+          <button id="refreshBtn" class="px-4 py-2 rounded-xl text-white" style="background:var(--green-accent)">Refresh</button>
+        </div>
+        <canvas id="chart" height="120"></canvas>
+      </section>
+
+      <section class="card overflow-x-auto">
+        <h2 class="text-lg font-semibold mb-3" style="color:var(--blue)">Recent Sessions (last 10)</h2>
+        <table class="min-w-full text-sm">
+          <thead class="text-slate-600">
+            <tr>
+              <th class="text-left py-1 pr-4">ID</th>
+              <th class="text-left py-1 pr-4">Platform</th>
+              <th class="text-left py-1 pr-4">Seconds</th>
+              <th class="text-left py-1 pr-4">Start</th>
+              <th class="text-left py-1 pr-4">End</th>
+            </tr>
+          </thead>
+          <tbody id="tbody" class="text-black"></tbody>
+        </table>
+      </section>
     </section>
 
-    <!-- Avg Hours/Day Donuts -->
-    <section class="card">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold text-green-800">Average Hours per Day</h2>
-        <div class="text-slate-600 text-sm">Target: 4.0 h/day</div>
-      </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
-        <div class="flex flex-col items-center"><canvas id="d_fb" width="160" height="160"></canvas><div class="mt-2 text-black">Facebook</div></div>
-        <div class="flex flex-col items-center"><canvas id="d_ig" width="160" height="160"></canvas><div class="mt-2 text-black">Instagram</div></div>
-        <div class="flex flex-col items-center"><canvas id="d_x" width="160" height="160"></canvas><div class="mt-2 text-black">X</div></div>
-        <div class="flex flex-col items-center"><canvas id="d_tt" width="160" height="160"></canvas><div class="mt-2 text-black">TikTok</div></div>
+    <!-- GPA -->
+    <section id="tab-gpa" class="hidden">
+      <div class="grid md:grid-cols-2 gap-6">
+        <section class="card">
+          <h2 class="text-lg font-semibold mb-3" style="color:var(--blue)">Courses</h2>
+          <div id="rows" class="space-y-3"></div>
+          <div class="mt-3 flex flex-wrap items-center gap-3">
+            <button id="addRow" class="rounded-lg px-4 py-2 text-white" style="background:var(--blue)">+ add more courses</button>
+            <button id="clearRows" class="rounded-lg px-4 py-2 text-white" style="background:#000">Clear</button>
+          </div>
+          <div class="mt-5"><button id="calc" class="rounded-lg px-5 py-2.5 text-white shadow-sm" style="background:var(--green-accent)">Calculate</button></div>
+        </section>
+        <section class="card">
+          <h2 class="text-lg font-semibold mb-3" style="color:var(--blue)">Result</h2>
+          <div id="kpi_gpa" class="text-2xl font-extrabold inline-block rounded-lg px-4 py-2 kpi-gold">GPA: 0.000</div>
+          <div id="tot" class="text-slate-600 mb-4 mt-2">Total Credits: 0</div>
+          <div class="overflow-auto">
+            <table class="w-full text-sm border border-neutral-200 rounded-lg overflow-hidden">
+              <thead class="bg-black text-white"><tr><th class="text-left p-2">Course</th><th class="text-left p-2">Credit</th><th class="text-left p-2">Grade</th><th class="text-left p-2">Grade Points</th></tr></thead>
+              <tbody id="report"></tbody>
+              <tfoot><tr style="background:#f0d463;color:#111"><td class="p-2 font-semibold" colspan="3">Overall GPA</td><td class="p-2 font-extrabold" id="gpaCell">0.000</td></tr></tfoot>
+            </table>
+          </div>
+        </section>
       </div>
     </section>
 
-    <!-- Total Donut -->
-    <section class="card">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold text-green-800">Total Time (All-Time)</h2>
-        <div class="text-slate-600 text-sm">Sum per platform (seconds)</div>
-      </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="flex flex-col items-center"><canvas id="donutTotal" width="240" height="240"></canvas></div>
-        <div id="totalBreakdown" class="text-black text-sm space-y-1"></div>
-      </div>
-    </section>
-
-    <!-- Last 7 Days Chart -->
-    <section class="card">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-lg font-semibold text-green-800">Last 7 Days</h2>
-        <button id="refreshBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg text-white">Refresh</button>
-      </div>
-      <canvas id="chart" height="120"></canvas>
-    </section>
-
-    <!-- Recent Sessions -->
-    <section class="card overflow-x-auto">
-      <h2 class="text-lg font-semibold mb-3 text-green-800">Recent Sessions (last 10)</h2>
-      <table class="min-w-full text-sm">
-        <thead class="text-slate-600">
-          <tr>
-            <th class="text-left py-1 pr-4">ID</th>
-            <th class="text-left py-1 pr-4">Platform</th>
-            <th class="text-left py-1 pr-4">Seconds</th>
-            <th class="text-left py-1 pr-4">Start</th>
-            <th class="text-left py-1 pr-4">End</th>
-          </tr>
-        </thead>
-        <tbody id="tbody" class="text-black"></tbody>
-      </table>
+    <!-- ANALYSIS -->
+    <section id="tab-analysis" class="hidden">
+      <section class="card">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="font-semibold" style="color:var(--blue)">CAT weight</div>
+          <input id="catW" type="number" step="0.05" min="0" max="1" value="0.4" class="border border-neutral-300 rounded-lg px-2 py-1 text-black">
+          <div class="font-semibold" style="color:var(--blue)">Exam weight</div>
+          <input id="examW" type="number" step="0.05" min="0" max="1" value="0.6" class="border border-neutral-300 rounded-lg px-2 py-1 text-black">
+          <button id="runAnalysis" class="rounded-lg px-4 py-2 text-white" style="background:var(--green-accent)">Run</button>
+        </div>
+        <div id="analysisOut" class="text-sm text-black bg-white p-3 rounded-lg overflow-auto"></div>
+      </section>
     </section>
   </div>
 
-  <!-- Optional local JS -->
-  <script src="{% static 'tracker/js/dashboard.js' %}"></script>
+<script>
+const tabs = document.querySelectorAll('.tab-btn');
+const sections = { tracker: document.getElementById('tab-tracker'), gpa: document.getElementById('tab-gpa'), analysis: document.getElementById('tab-analysis') };
+tabs.forEach(btn => btn.addEventListener('click', () => { tabs.forEach(b=>b.classList.remove('tab-active')); btn.classList.add('tab-active'); Object.values(sections).forEach(s=>s.classList.add('hidden')); sections[btn.dataset.tab].classList.remove('hidden'); }));
+
+const fmt = (n)=> Math.round(n ?? 0);
+async function fetchJSON(url){ const r = await fetch(url); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+
+const COLORS = { facebook:'#3b82f6', instagram:'#ec4899', x:'#111827', tiktok:'#10b981' };
+
+// Avg/day donuts
+const targetHours = 4.0; document.getElementById('targetLabel').textContent = targetHours.toFixed(1);
+const donutCfg = (value, color) => ({
+  type:'doughnut',
+  data:{ labels:['Used','Remaining'], datasets:[{ data:[Math.min(value,targetHours), Math.max(targetHours - Math.min(value,targetHours), 0.0001)], backgroundColor:[color, '#e5e7eb'], borderWidth:0 }]},
+  options:{ cutout:'70%', plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(c)=> (c.dataIndex===0?`Used: ${value.toFixed(2)} h/day`:`Target: ${targetHours} h/day`) }}}},
+  plugins:[{ id:'centerText', afterDraw(chart){ const {ctx}=chart; const m=chart.getDatasetMeta(0).data[0]; if(!m)return; ctx.save(); ctx.font='bold 16px system-ui'; ctx.fillStyle='#111827'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(`${value.toFixed(2)}h`, m.x, m.y); ctx.restore(); } }]
+});
+let d_fb, d_ig, d_x, d_tt;
+async function loadDonuts(){
+  const avg = await fetchJSON('/summary/avg_hours_per_day/');
+  const c1=document.getElementById('d_fb').getContext('2d');
+  const c2=document.getElementById('d_ig').getContext('2d');
+  const c3=document.getElementById('d_x').getContext('2d');
+  const c4=document.getElementById('d_tt').getContext('2d');
+  if(d_fb)d_fb.destroy(); if(d_ig)d_ig.destroy(); if(d_x)d_x.destroy(); if(d_tt)d_tt.destroy();
+  d_fb=new Chart(c1, donutCfg(avg.facebook||0, COLORS.facebook));
+  d_ig=new Chart(c2, donutCfg(avg.instagram||0, COLORS.instagram));
+  d_x=new Chart(c3, donutCfg(avg.x||0, COLORS.x));
+  d_tt=new Chart(c4, donutCfg(avg.tiktok||0, COLORS.tiktok));
+}
+
+// TOTAL donut (sum seconds per platform)
+let donutTotal;
+function msLabelFromSeconds(sec){ const ms=Math.round(sec*1000); const hours=sec/3600; return {ms, hours}; }
+async function loadDonutTotal(){
+  const data = await fetchJSON('/summary/total_all/');
+  const t = data.totals_sec || {};
+  const labels = ['facebook','instagram','x','tiktok'];
+  const values = labels.map(k => Math.round(t[k] || 0));
+  const colors = labels.map(k => COLORS[k]);
+  const totalSec = values.reduce((a,b)=>a+b, 0);
+  const totalHours = (totalSec/3600).toFixed(2);
+  const ctx = document.getElementById('donutTotal').getContext('2d');
+  if (donutTotal) donutTotal.destroy();
+  donutTotal = new Chart(ctx, {
+    type:'doughnut',
+    data:{ labels: labels.map(s=>s[0].toUpperCase()+s.slice(1)), datasets:[{ data: values, backgroundColor: colors, borderWidth:0 }]},
+    options:{ cutout:'70%', plugins:{ legend:{ position:'bottom', labels:{color:'#0f172a'} }, tooltip:{ callbacks:{ label:(c)=>{ const sec=c.raw||0; const {ms,hours}=msLabelFromSeconds(sec); return `${c.label}: ${sec.toLocaleString()} s  (${ms.toLocaleString()} ms, ${hours.toFixed(2)} h)`; }}}}},
+    plugins:[{ id:'centerTotalText', afterDraw(chart){ const {ctx}=chart; const m=chart.getDatasetMeta(0).data[0]; if(!m)return; ctx.save(); ctx.font='bold 18px system-ui'; ctx.fillStyle='#111827'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(`${totalHours} h`, m.x, m.y); ctx.font='12px system-ui'; ctx.fillStyle='#6b7280'; ctx.fillText('total', m.x, m.y+18); ctx.restore(); } }]
+  });
+  const b = document.getElementById('totalBreakdown');
+  b.innerHTML = labels.map(k => { const sec=Math.round(t[k]||0); const {ms,hours}=msLabelFromSeconds(sec); const name=k[0].toUpperCase()+k.slice(1); return `<div><span class="font-semibold">${name}:</span> ${sec.toLocaleString()} s  (${ms.toLocaleString()} ms, ${hours.toFixed(2)} h)</div>`; }).join('');
+}
+
+// Last‑7 + KPIs + recent sessions
+function prepareLast7(data){
+  const days=[...new Set(data.map(d=>d.date))].sort();
+  const plats=['facebook','instagram','x','tiktok'];
+  const datasets=plats.map(p=>({ label:p, data:days.map(day=>{ const row=data.find(d=>d.date===day && d.platform===p); return row?Math.round(row.seconds):0; }), backgroundColor:COLORS[p], borderColor:COLORS[p], borderWidth:1 }));
+  return { labels:days, datasets };
+}
+async function loadKPIs(){
+  const sum=await fetchJSON('/summary/today/');
+  const t=sum.totals||{};
+  document.getElementById('kpi_fb').textContent=fmt(t['facebook']);
+  document.getElementById('kpi_ig').textContent=fmt(t['instagram']);
+  document.getElementById('kpi_x').textContent=fmt(t['x']);
+  document.getElementById('kpi_tt').textContent=fmt(t['tiktok']);
+}
+let chart;
+async function loadChart(){
+  const data=await fetchJSON('/summary/last7/');
+  const cfg=prepareLast7(data);
+  const ctx=document.getElementById('chart').getContext('2d');
+  if(chart) chart.destroy();
+  chart=new Chart(ctx,{ type:'bar', data:cfg, options:{ responsive:true, scales:{ x:{stacked:true}, y:{stacked:true, beginAtZero:true, title:{display:true, text:'Seconds'}}}, plugins:{legend:{position:'bottom', labels:{color:'#0f172a'}}}}});}
+async function loadSessions(){
+  const rows=await fetchJSON('/sessions/recent/?limit=10');
+  const tbody=document.getElementById('tbody');
+  tbody.innerHTML='';
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="py-1 pr-4">${r.id}</td><td class="py-1 pr-4 capitalize">${r.platform}</td><td class="py-1 pr-4">${fmt(r.time)}</td><td class="py-1 pr-4">${r.start_ts}</td><td class="py-1 pr-4">${r.end_ts}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function trackerRefresh(){ await Promise.all([loadKPIs(), loadDonuts(), loadDonutTotal(), loadChart(), loadSessions()]); }
+document.getElementById('refreshBtn').addEventListener('click', trackerRefresh);
+trackerRefresh(); setInterval(trackerRefresh, 10000);
+
+// GPA tab JS
+const gradeOptions='{% for grade in grade_options %}<option value="{{ grade }}">{{ grade }}</option>{% endfor %}';
+const rowsEl=document.getElementById('rows'); const reportEl=document.getElementById('report'); const gpaCell=document.getElementById('gpaCell'); const kpiG=document.getElementById('kpi_gpa'); const tot=document.getElementById('tot');
+function rowTemplate(){ return `<div class="grid grid-cols-12 gap-2 items-center"><input class="col-span-6 border border-neutral-300 rounded-lg px-3 py-2 text-black" placeholder="Course (optional)"><input class="col-span-3 border border-neutral-300 rounded-lg px-3 py-2 text-black" placeholder="Credits" type="number" step="0.5" min="0.5"><select class="col-span-2 border border-neutral-300 rounded-lg px-3 py-2 text-black">${gradeOptions}</select><button class="col-span-1 text-red-600 hover:text-red-700 text-xl leading-none" title="Remove" type="button">✕</button></div>`; }
+function addRow(name='', credits='', grade='A'){ const wrap=document.createElement('div'); wrap.innerHTML=rowTemplate(); const row=wrap.firstElementChild; const [nameEl, credEl, gradeEl, delBtn]=row.children; nameEl.value=name; credEl.value=credits; gradeEl.value=grade; delBtn.onclick=()=>row.remove(); rowsEl.appendChild(row); }
+function readCourses(){ return [...rowsEl.children].map(r=>{ const [nameEl, credEl, gradeEl]=r.children; return { name:nameEl.value.trim(), credits:Number(credEl.value||0), grade:gradeEl.value }; }).filter(c=>c.credits>0); }
+async function calculate(){ const payload={ courses:readCourses(), custom_scale:null }; const res=await fetch('/api/calc/',{ method:'POST', headers:{'content-type':'application/json' }, body:JSON.stringify(payload)}); const data=await res.json(); renderReport(data); }
+function renderReport(data){ reportEl.innerHTML=''; for(const r of data.rows){ const tr=document.createElement('tr'); tr.innerHTML=`<td class="p-2 text-black">${r.name}</td><td class="p-2 text-black">${r.credits}</td><td class="p-2 text-black">${r.grade}</td><td class="p-2 text-black">${r.explain}</td>`; reportEl.appendChild(tr); } gpaCell.textContent=data.gpa.toFixed(3); kpiG.textContent='GPA: '+data.gpa.toFixed(3); tot.textContent='Total Credits: '+data.total_credits; }
+document.getElementById('addRow').onclick=()=>addRow(); document.getElementById('clearRows').onclick=()=>rowsEl.innerHTML=''; document.getElementById('calc').onclick=calculate;
+addRow('Math',3,'A'); addRow('English',3,'B+'); addRow('History',2,'A-'); addRow('CRE',3,'A'); addRow('SSC',3.5,'A+');
+
+// Analysis JS
+document.getElementById('runAnalysis').onclick = async () => {
+  const c = Number(document.getElementById('catW').value || 0.4);
+  const e = Number(document.getElementById('examW').value || 0.6);
+  const out = document.getElementById('analysisOut');
+  out.innerHTML = 'Running...';
+  const r = await fetch(`/api/analysis/run/?cat=${c}&exam=${e}`);
+  const data = await r.json();
+  if(!r.ok){ out.textContent = (data.error || 'Error'); return; }
+  let html = '';
+  for(const s of data.semesters){
+    const chips = Object.entries(s.avg_hours_per_day).map(([k,v]) => `<span class="chip mr-2 mb-2 inline-block">${k}: ${v.toFixed(2)} h/day</span>`).join(' ');
+    const recs = s.recommendations.map(x => `<li class="mb-1">${x}</li>`).join('');
+    html += `<div class="mb-4 border border-slate-200 rounded-xl p-3">
+      <div class="font-semibold" style="color:var(--blue)">Semester ${s.semester_id} — GPA ${s.gpa} <span class="text-slate-500">(${s.start} → ${s.end}, days seen: ${s.days_seen})</span></div>
+      <div class="mt-2">${chips}</div>
+      <div class="mt-3 font-semibold" style="color:var(--gold)">Decision & Recommendations</div>
+      <ul class="list-disc pl-6">${recs}</ul>
+    </div>`;
+  }
+  const gpaList = data.gpa_by_semester.map(x => `<div><b>${x.semester_id}</b>: GPA ${x.gpa} <span class="text-slate-500">(${x.start} → ${x.end})</span></div>`).join('');
+  out.innerHTML = `<div class="font-semibold mb-1" style="color:var(--blue)">GPA by Semester</div>${gpaList}<hr class="my-2">${html}<div class="text-slate-500 mt-2">${data.note||''}</div>`;
+};
+</script>
 </body>
 </html>
