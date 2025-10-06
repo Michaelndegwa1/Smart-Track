@@ -1,5 +1,3 @@
-from django.shortcuts import render
-
 from datetime import timedelta
 from django.utils import timezone
 from django.db.models import Sum, Avg
@@ -14,9 +12,6 @@ from .models import Session
 
 def today_key():
     return timezone.localdate()
-def dashboard(request):
-    """Render the main dashboard page."""
-    return render(request, "tracker/dashboard.html")
 
 def serialize_session(session):
     """Helper to convert a Session instance to dict."""
