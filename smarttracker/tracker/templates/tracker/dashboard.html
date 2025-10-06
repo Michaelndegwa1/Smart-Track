@@ -1,104 +1,179 @@
-from datetime import timedelta
-from django.utils import timezone
-from django.db.models import Sum, Avg
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Social Media Tracker</title>
 
-from .models import Session
+  <!-- Tailwind CSS & Chart.js -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-# ----------------------
-# Utility functions
-# ----------------------
+  <style>
+    body { background: #065f46; }
+    .card { background: white; border-radius: 1rem; box-shadow: 0 8px 20px rgba(0,0,0,.1); padding: 1.2rem; }
+  </style>
+</head>
+<body class="text-white">
+  <div class="max-w-6xl mx-auto p-6 space-y-6">
+    <header class="flex items-center justify-between">
+      <h1 class="text-2xl font-extrabold">📊 Social Media Tracker</h1>
+      <div class="bg-black/40 px-3 py-1 rounded-lg text-sm">Timezone: {{ timezone }}</div>
+    </header>
 
-def today_key():
-    return timezone.localdate()
+    <!-- KPIs -->
+    <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div class="card"><div class="text-slate-600">Facebook (s)</div><div id="kpi_fb" class="text-3xl font-semibold text-black">0</div></div>
+      <div class="card"><div class="text-slate-600">Instagram (s)</div><div id="kpi_ig" class="text-3xl font-semibold text-black">0</div></div>
+      <div class="card"><div class="text-slate-600">X (s)</div><div id="kpi_x" class="text-3xl font-semibold text-black">0</div></div>
+      <div class="card"><div class="text-slate-600">TikTok (s)</div><div id="kpi_tt" class="text-3xl font-semibold text-black">0</div></div>
+    </section>
 
-def serialize_session(session):
-    """Helper to convert a Session instance to dict."""
-    return {
-        "id": session.id,
-        "platform": session.platform,
-        "time": round(session.time_seconds, 1),
-        "date": str(session.date),
-        "start_ts": session.start_ts.isoformat(),
-        "end_ts": session.end_ts.isoformat(),
-    }
+    <!-- Avg Hours/Day Donuts -->
+    <section class="card">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold text-green-800">Average Hours per Day</h2>
+        <div class="text-slate-600 text-sm">Target: 4.0 h/day</div>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+        <div class="flex flex-col items-center"><canvas id="d_fb" width="160" height="160"></canvas><div class="mt-2 text-black">Facebook</div></div>
+        <div class="flex flex-col items-center"><canvas id="d_ig" width="160" height="160"></canvas><div class="mt-2 text-black">Instagram</div></div>
+        <div class="flex flex-col items-center"><canvas id="d_x" width="160" height="160"></canvas><div class="mt-2 text-black">X</div></div>
+        <div class="flex flex-col items-center"><canvas id="d_tt" width="160" height="160"></canvas><div class="mt-2 text-black">TikTok</div></div>
+      </div>
+    </section>
 
+    <!-- Total Donut -->
+    <section class="card">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold text-green-800">Total Time (All-Time)</h2>
+        <div class="text-slate-600 text-sm">Sum per platform (seconds)</div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="flex flex-col items-center"><canvas id="donutTotal" width="240" height="240"></canvas></div>
+        <div id="totalBreakdown" class="text-black text-sm space-y-1"></div>
+      </div>
+    </section>
 
-# ----------------------
-# API Views
-# ----------------------
+    <!-- Last 7 Days Chart -->
+    <section class="card">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-semibold text-green-800">Last 7 Days</h2>
+        <button id="refreshBtn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg text-white">Refresh</button>
+      </div>
+      <canvas id="chart" height="120"></canvas>
+    </section>
 
-@api_view(["GET"])
-def sessions_today(request):
-    """Return all sessions for today."""
-    today = today_key()
-    sessions = Session.objects.filter(date=today).order_by("start_ts")
-    data = [serialize_session(s) for s in sessions]
-    return Response(data)
+    <!-- Recent Sessions -->
+    <section class="card overflow-x-auto">
+      <h2 class="text-lg font-semibold mb-3 text-green-800">Recent Sessions (last 10)</h2>
+      <table class="min-w-full text-sm">
+        <thead class="text-slate-600">
+          <tr>
+            <th class="text-left py-1 pr-4">ID</th>
+            <th class="text-left py-1 pr-4">Platform</th>
+            <th class="text-left py-1 pr-4">Seconds</th>
+            <th class="text-left py-1 pr-4">Start</th>
+            <th class="text-left py-1 pr-4">End</th>
+          </tr>
+        </thead>
+        <tbody id="tbody" class="text-black"></tbody>
+      </table>
+    </section>
+  </div>
 
+<script>
+const COLORS = { facebook:'#3b82f6', instagram:'#ec4899', x:'#111827', tiktok:'#10b981' };
+const fmt = n => Math.round(n || 0);
 
-@api_view(["GET"])
-def sessions_recent(request):
-    """Return recent sessions (default limit = 10)."""
-    limit = int(request.query_params.get("limit", 10))
-    sessions = Session.objects.all().order_by("-end_ts")[:limit]
-    data = [serialize_session(s) for s in sessions]
-    return Response(data)
+async function fetchJSON(url){ const r = await fetch(url); return r.json(); }
 
+async function loadKPIs(){
+  const data = await fetchJSON('/api/summary/today/');
+  const t = data.totals || {};
+  document.getElementById('kpi_fb').textContent = fmt(t.facebook);
+  document.getElementById('kpi_ig').textContent = fmt(t.instagram);
+  document.getElementById('kpi_x').textContent = fmt(t.x);
+  document.getElementById('kpi_tt').textContent = fmt(t.tiktok);
+}
 
-@api_view(["GET"])
-def summary_today(request):
-    """Return total seconds spent per platform for today."""
-    today = today_key()
-    totals = (
-        Session.objects.filter(date=today)
-        .values("platform")
-        .annotate(total=Sum("time_seconds"))
-    )
-    result = {t["platform"]: round(t["total"] or 0, 1) for t in totals}
-    return Response({"date": str(today), "totals": result})
+function donutConfig(value, color){
+  return {
+    type:'doughnut',
+    data:{ labels:['Used','Remaining'],
+      datasets:[{ data:[Math.min(value,4), Math.max(4-value,0.1)], backgroundColor:[color,'#e5e7eb'], borderWidth:0 }]
+    },
+    options:{ cutout:'70%', plugins:{ legend:{display:false} } }
+  };
+}
 
+let d_fb, d_ig, d_x, d_tt;
+async function loadDonuts(){
+  const avg = await fetchJSON('/api/summary/avg_hours_per_day/');
+  if(d_fb)d_fb.destroy(); if(d_ig)d_ig.destroy(); if(d_x)d_x.destroy(); if(d_tt)d_tt.destroy();
+  d_fb = new Chart(document.getElementById('d_fb'), donutConfig(avg.facebook, COLORS.facebook));
+  d_ig = new Chart(document.getElementById('d_ig'), donutConfig(avg.instagram, COLORS.instagram));
+  d_x  = new Chart(document.getElementById('d_x'),  donutConfig(avg.x, COLORS.x));
+  d_tt = new Chart(document.getElementById('d_tt'), donutConfig(avg.tiktok, COLORS.tiktok));
+}
 
-@api_view(["GET"])
-def summary_last7(request):
-    """Return totals (seconds) per platform for the last 7 days."""
-    end = timezone.localdate()
-    start = end - timedelta(days=6)
-    qs = (
-        Session.objects.filter(date__range=(start, end))
-        .values("date", "platform")
-        .annotate(seconds=Sum("time_seconds"))
-        .order_by("date")
-    )
-    data = [
-        {"date": str(row["date"]), "platform": row["platform"], "seconds": round(row["seconds"] or 0, 1)}
-        for row in qs
-    ]
-    return Response(data)
+let donutTotal;
+async function loadDonutTotal(){
+  const data = await fetchJSON('/api/summary/total_all/');
+  const t = data.totals_sec || {};
+  const labels = ['facebook','instagram','x','tiktok'];
+  const values = labels.map(k=>Math.round(t[k]||0));
+  const ctx = document.getElementById('donutTotal');
+  if(donutTotal)donutTotal.destroy();
+  donutTotal = new Chart(ctx, {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data:values, backgroundColor:labels.map(k=>COLORS[k]), borderWidth:0 }] },
+    options:{ plugins:{ legend:{ position:'bottom', labels:{ color:'#111' } } } }
+  });
+  const totalSec = values.reduce((a,b)=>a+b,0);
+  const totalHours = (totalSec/3600).toFixed(2);
+  document.getElementById('totalBreakdown').innerHTML = labels.map(k=>{
+    const sec=t[k]||0, h=(sec/3600).toFixed(2);
+    return `<div><b>${k}:</b> ${sec.toLocaleString()} s (${h} h)</div>`;
+  }).join('');
+}
 
+let chart;
+async function loadChart(){
+  const data = await fetchJSON('/api/summary/last7/');
+  const days=[...new Set(data.map(d=>d.date))].sort();
+  const plats=['facebook','instagram','x','tiktok'];
+  const datasets = plats.map(p=>({
+    label:p, data:days.map(day=>{
+      const r=data.find(d=>d.date===day && d.platform===p);
+      return r?Math.round(r.seconds):0;
+    }),
+    backgroundColor:COLORS[p]
+  }));
+  if(chart)chart.destroy();
+  chart=new Chart(document.getElementById('chart'),{ type:'bar', data:{ labels:days, datasets }, options:{ scales:{y:{beginAtZero:true}}}});
+}
 
-@api_view(["GET"])
-def avg_hours_per_day(request):
-    """Return average hours per day per platform."""
-    platforms = ["facebook", "instagram", "x", "tiktok"]
-    total_days = Session.objects.values("date").distinct().count() or 1
+async function loadSessions(){
+  const rows = await fetchJSON('/api/sessions/recent/?limit=10');
+  const tbody=document.getElementById('tbody'); tbody.innerHTML='';
+  for(const r of rows){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td class="py-1 pr-4">${r.id}</td>
+                  <td class="py-1 pr-4 capitalize">${r.platform}</td>
+                  <td class="py-1 pr-4">${fmt(r.time)}</td>
+                  <td class="py-1 pr-4">${r.start_ts}</td>
+                  <td class="py-1 pr-4">${r.end_ts}</td>`;
+    tbody.appendChild(tr);
+  }
+}
 
-    result = {}
-    for p in platforms:
-        total_seconds = Session.objects.filter(platform=p).aggregate(Sum("time_seconds"))["time_seconds__sum"] or 0
-        result[p] = round((total_seconds / total_days) / 3600.0, 2)
+async function refreshAll(){
+  await Promise.all([loadKPIs(), loadDonuts(), loadDonutTotal(), loadChart(), loadSessions()]);
+}
 
-    return Response(result)
-
-
-@api_view(["GET"])
-def total_all(request):
-    """Return all-time total seconds and grand total."""
-    totals = (
-        Session.objects.values("platform")
-        .annotate(total=Sum("time_seconds"))
-    )
-    platform_totals = {t["platform"]: float(t["total"] or 0) for t in totals}
-    grand = sum(platform_totals.values())
-    return Response({"totals_sec": platform_totals, "grand_total_sec": grand})
+document.getElementById('refreshBtn').addEventListener('click', refreshAll);
+refreshAll(); setInterval(refreshAll, 10000);
+</script>
+</body>
+</html>
